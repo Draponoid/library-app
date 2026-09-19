@@ -314,10 +314,23 @@ def create_app(config=None):
             CASE WHEN l.returned_at IS NULL AND l.due_at < ? THEN 1 ELSE 0 END AS overdue
             FROM loans l JOIN copies c ON c.id=l.copy_id JOIN books b ON b.id=c.book_id
             JOIN users u ON u.id=l.reader_id'''
-        args = [date.today().isoformat()]
+        today = date.today().isoformat()
+        args, conditions = [today], []
+        status = request.args.get('status', 'all')
+        if status not in ('all', 'active', 'returned', 'overdue'):
+            raise APIError('status: допустимы all, active, returned, overdue.', 422)
         if g.user['role'] == 'reader':
-            query += ' WHERE l.reader_id=?'
+            conditions.append('l.reader_id=?')
             args.append(g.user['id'])
+        if status in ('active', 'overdue'):
+            conditions.append('l.returned_at IS NULL')
+        elif status == 'returned':
+            conditions.append('l.returned_at IS NOT NULL')
+        if status == 'overdue':
+            conditions.append('l.due_at < ?')
+            args.append(today)
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
         return jsonify(items=[dict(r) for r in db().execute(query + ' ORDER BY l.id DESC', args)])
 
     @app.post('/api/loans')

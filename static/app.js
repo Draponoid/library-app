@@ -68,7 +68,7 @@ async function loans() {
     await references();const copies=cache.copies.filter(c=>c.status==='available').map(c=>({id:c.id,title:c.inventory_number+' — '+c.title+' · '+c.branch}));
     fillSelect($('#issue-form [name=copy_id]'),copies,'Выберите экземпляр');fillSelect($('#issue-form [name=reader_id]'),(await api('/readers')).items,'Выберите читателя');
   }
-  const rows=(await api('/loans')).items;
+  const rows=(await api('/loans?status='+encodeURIComponent($('#loan-status').value))).items;
   $('#loan-list').replaceChildren(table(['Книга','Экземпляр','Читатель','Выдана','Срок возврата','Состояние','Действие'],rows.map(r=>[
     r.title,r.inventory_number,r.reader,r.issued_at,r.due_at,el('span',r.returned_at?'Возвращена '+r.returned_at:r.overdue?'Просрочена':'На руках','badge'+(r.overdue?' late':'')),
     !r.returned_at&&user.role==='librarian'?button('Принять возврат',async()=>{await send('/loans/'+r.id+'/return','POST',{});await loans();notice('Возврат принят. Экземпляр снова доступен.');}):'—'
@@ -108,6 +108,7 @@ $('#auth-form').addEventListener('submit',async event=>{event.preventDefault();$
 $('#logout').addEventListener('click',()=>perform(async()=>{await send('/auth/logout','POST',{});user=null;csrf='';showAuth();}));
 $$('nav button').forEach(b=>b.addEventListener('click',()=>perform(()=>page(b.dataset.page))));
 $('#search-form').addEventListener('submit',e=>{e.preventDefault();perform(catalog);});
+$('#loan-status').addEventListener('change',()=>perform(loans));
 $('#issue-form').addEventListener('submit',e=>{e.preventDefault();perform(async()=>{const data=Object.fromEntries(new FormData(e.target));await send('/loans','POST',{copy_id:Number(data.copy_id),reader_id:Number(data.reader_id)});await loans();notice('Выдача оформлена.');});});
 $$('#entity-tabs button').forEach(b=>b.addEventListener('click',()=>perform(async()=>{entity=b.dataset.entity;editing=null;$$('#entity-tabs button').forEach(x=>x.classList.toggle('active',x===b));await references();await manage();})));
 $('#cancel-edit').addEventListener('click',()=>{editing=null;entityForm();});
