@@ -1,0 +1,20 @@
+services:
+  library:
+    build: .
+    image: ghcr.io/draponoid/library-app:latest
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set a random SECRET_KEY in .env}
+      DATABASE_PATH: /data/library.sqlite3
+      DEMO_LIBRARIAN_PASSWORD: ${DEMO_LIBRARIAN_PASSWORD:-}
+      DEMO_READER_PASSWORD: ${DEMO_READER_PASSWORD:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      LOAN_DAYS: ${LOAN_DAYS:-14}
+      MAX_ACTIVE_LOANS: ${MAX_ACTIVE_LOANS:-5}
+    volumes:
+      - library-data:/data
+    restart: unless-stopped
+volumes:
+  library-data:

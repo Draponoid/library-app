@@ -1,0 +1,7 @@
+**
+!app.py
+!schema.sql
+!requirements.txt
+!requirements-docker.txt
+!static/
+!static/**
