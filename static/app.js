@@ -3,6 +3,7 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let user, csrf = '', registering = false, entity = 'books', editing = null;
 let cache = {}, records = [];
+let loanRequest = 0;
 const labels = {books:'Книги',authors:'Авторы',branches:'Филиалы',copies:'Экземпляры',faculties:'Факультеты',catalog:'Каталог книг',loans:'Выдачи и возвраты',manage:'Управление фондом',reports:'Отчёты',audit:'Журнал действий'};
 const fieldLabels = {id:'ID',title:'Название',name:'Название',author_id:'Автор',year:'Год издания',isbn:'ISBN / шифр',address:'Адрес',book_id:'Книга',branch_id:'Филиал',inventory_number:'Инвентарный номер'};
 const schemas = {books:['title','author_id','year','isbn'],authors:['name'],branches:['name','address'],copies:['book_id','branch_id','inventory_number'],faculties:['name']};
@@ -33,7 +34,7 @@ function table(headers, rows) {
 }
 function button(text, handler, className) {const b=el('button',text,className);b.type='button';b.addEventListener('click',()=>perform(handler));return b;}
 async function references() { const pairs=await Promise.all(['authors','branches','books','copies','faculties'].map(async key=>[key,(await api('/'+key)).items]));cache=Object.fromEntries(pairs); }
-function showAuth() {$('#auth-screen').hidden=false;$('#app-screen').hidden=true;}
+function showAuth() {++loanRequest;$('#auth-screen').hidden=false;$('#app-screen').hidden=true;}
 async function showApp() {
   $('#auth-screen').hidden=true;$('#app-screen').hidden=false;
   $('#account-name').textContent=user.full_name;$('#account-role').textContent=user.role==='librarian'?'Библиотекарь':'Читатель';
@@ -64,11 +65,13 @@ async function catalog() {
   });
 }
 async function loans() {
+  const requestId=++loanRequest, status=$('#loan-status').value;
   if(user.role==='librarian') {
     await references();const copies=cache.copies.filter(c=>c.status==='available').map(c=>({id:c.id,title:c.inventory_number+' — '+c.title+' · '+c.branch}));
     fillSelect($('#issue-form [name=copy_id]'),copies,'Выберите экземпляр');fillSelect($('#issue-form [name=reader_id]'),(await api('/readers')).items,'Выберите читателя');
   }
-  const rows=(await api('/loans?status='+encodeURIComponent($('#loan-status').value))).items;
+  const rows=(await api('/loans?status='+encodeURIComponent(status))).items;
+  if(requestId!==loanRequest) return;
   $('#loan-list').replaceChildren(table(['Книга','Экземпляр','Читатель','Выдана','Срок возврата','Состояние','Действие'],rows.map(r=>[
     r.title,r.inventory_number,r.reader,r.issued_at,r.due_at,el('span',r.returned_at?'Возвращена '+r.returned_at:r.overdue?'Просрочена':'На руках','badge'+(r.overdue?' late':'')),
     !r.returned_at&&user.role==='librarian'?button('Принять возврат',async()=>{await send('/loans/'+r.id+'/return','POST',{});await loans();notice('Возврат принят. Экземпляр снова доступен.');}):'—'
