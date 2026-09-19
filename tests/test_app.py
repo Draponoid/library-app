@@ -177,6 +177,34 @@ class LibraryTests(unittest.TestCase):
         self.assertEqual(sum(r['loan_count'] for r in report['faculties']),1)
         self.assertEqual(self.client.get('/api/audit').json['items'][0]['action'],'issue')
 
+    def test_loan_status_filters(self):
+        self.login()
+        ids = [self.write('/api/loans', {'copy_id': i, 'reader_id': 2}).json['id'] for i in (1, 2, 3)]
+        self.write(f'/api/loans/{ids[0]}/return', {})
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        self.sql('UPDATE loans SET issued_at=?, due_at=? WHERE id=?', (yesterday, yesterday, ids[1]))
+        expected = {'all': set(ids), 'active': set(ids[1:]), 'returned': {ids[0]}, 'overdue': {ids[1]}}
+        for status, wanted in expected.items():
+            with self.subTest(status=status):
+                result = self.client.get('/api/loans?status=' + status)
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual({r['id'] for r in result.json['items']}, wanted)
+        self.assertEqual(len(self.client.get('/api/loans').json['items']), 3)
+        for status in ('invalid', '', "all' OR 1=1--"):
+            self.assertEqual(self.client.get('/api/loans', query_string={'status': status}).status_code, 422)
+
+    def test_loan_filters_preserve_reader_scope(self):
+        self.login()
+        loan_id = self.write('/api/loans', {'copy_id': 1, 'reader_id': 2}).json['id']
+        self.write('/api/auth/logout', {})
+        self.login('reader')
+        self.assertEqual(self.client.get('/api/loans?status=active').json['items'][0]['id'], loan_id)
+        self.write('/api/auth/logout', {})
+        self.client.post('/api/auth/register', json={'username': 'outsider', 'password': 'StrongPassword2026!', 'full_name': 'Другой читатель', 'faculty_id': 1})
+        self.client.post('/api/auth/login', json={'username': 'outsider', 'password': 'StrongPassword2026!'})
+        for status in ('all', 'active', 'returned', 'overdue'):
+            self.assertEqual(self.client.get('/api/loans?status=' + status).json['items'], [])
+
     def test_backup_snapshot(self):
         backup=Path(self.temp.name)/'backup.sqlite3'
         with closing(sqlite3.connect(self.path)) as source, closing(sqlite3.connect(backup)) as target:
