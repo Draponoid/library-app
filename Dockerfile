@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.13.5-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DATABASE_PATH=/data/library.sqlite3
@@ -7,7 +7,8 @@ COPY requirements.txt requirements-docker.txt ./
 RUN pip install --no-cache-dir -r requirements-docker.txt \
     && useradd --uid 10001 --create-home library \
     && mkdir /data && chown library:library /data
-COPY app.py schema.sql ./
+COPY app.py database.py ./
+COPY migrations ./migrations
 COPY static ./static
 USER library
 EXPOSE 5000

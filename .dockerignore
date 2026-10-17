@@ -1,5 +1,8 @@
 **
 !app.py
+!database.py
+!migrations/
+!migrations/**
 !schema.sql
 !requirements.txt
 !requirements-docker.txt
