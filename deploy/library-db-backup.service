@@ -1,0 +1,19 @@
+[Unit]
+Description=Library PostgreSQL daily backup on database VM
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+Environment=PGUSER=postgres
+Environment=PGDATABASE=library
+Environment=PATH=/usr/lib/postgresql/18/bin:/usr/sbin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /usr/local/lib/library-backup/postgres_backup.py --output-directory /var/backups/library/database --prefix library-db --as-postgres
+TimeoutStartSec=1h
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/library/database
+

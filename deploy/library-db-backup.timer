@@ -1,0 +1,11 @@
+[Unit]
+Description=Library database backup daily at 03:00 Moscow
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Europe/Moscow
+Persistent=true
+RandomizedDelaySec=0
+Unit=library-db-backup.service
+
+[Install]
+WantedBy=timers.target
