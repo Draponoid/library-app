@@ -7,6 +7,10 @@ data/
 backups/
 .pytest_cache/
 test-results.txt
+.tmp/
+.coverage*
+reports/
+.ruff_cache/
 
 .idea/
 .env.*

@@ -1,3 +1,4 @@
+-- Reference snapshot only. Runtime schema is managed by migrations/.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS faculties (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) BETWEEN 1 AND 120)
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS loans (
  id INTEGER PRIMARY KEY, copy_id INTEGER NOT NULL REFERENCES copies(id),
  reader_id INTEGER NOT NULL REFERENCES users(id), issued_at TEXT NOT NULL,
  due_at TEXT NOT NULL, returned_at TEXT,
+ renewal_count INTEGER NOT NULL DEFAULT 0 CHECK(renewal_count BETWEEN 0 AND 1),
  CHECK(due_at >= issued_at), CHECK(returned_at IS NULL OR returned_at >= issued_at)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_loan_per_copy ON loans(copy_id) WHERE returned_at IS NULL;
