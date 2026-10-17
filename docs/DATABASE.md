@@ -1,6 +1,22 @@
 # Схема данных
 
-Физическая схема находится в `schema.sql`. SQLite хранит данные в файле `DATABASE_PATH`. Для каждого подключения включены внешние ключи; применяется WAL и ожидание блокировки до 10 секунд. Автоматически создаётся отсутствующая схема, но изменение схемы существующей базы требует отдельной миграции.
+Источник изменений схемы — `migrations/`, инструмент — yoyo-migrations 9.0.0.
+`schema.sql` хранит справочный снимок актуальной схемы. SQLite хранит данные в
+`DATABASE_PATH`; включены внешние ключи, WAL и ожидание блокировки до 10 секунд.
+`make migrate` и запуск приложения применяют недостающие миграции под блокировкой.
+История хранится в `_yoyo_migration`. Перед обновлением существующей установки
+остановите сервер и выполните `make backup OUTPUT=backups/before-upgrade.sqlite3`.
+
+| Миграция | Изменение |
+|---|---|
+| 0001_initial | Создание девяти исходных таблиц; IF NOT EXISTS позволяет принять исходную полную схему ЛР1 без удаления данных. |
+| 0002_indexes | Четыре индекса, включая запрет двух активных выдач экземпляра. |
+| 0003_renewal | Поле loans.renewal_count INTEGER NOT NULL DEFAULT 0 CHECK(renewal_count BETWEEN 0 AND 1). |
+
+Нумерация и зависимости задают порядок. Применённые миграции не редактируются.
+Откат выполняется восстановлением согласованной копии в новый файл; разрушительных
+down-миграций нет. tests/test_migrations.py проверяет чистую БД, пошаговое обновление
+с записью между шагами, повторный запуск и старую БД с книгой и активной выдачей.
 
 ```mermaid
 erDiagram
@@ -22,7 +38,7 @@ erDiagram
 | copies | id PK; book_id FK; branch_id FK; inventory_number TEXT | Ссылки на books и branches; уникальный инвентарный номер |
 | faculties | id PK; name TEXT | Уникальное имя; длина 1–120 |
 | users | id PK; username TEXT; password_hash TEXT; full_name TEXT; role TEXT; faculty_id FK NULL | Уникальный логин; role reader/librarian; ссылка на faculties; читателю API требует факультет |
-| loans | id PK; copy_id FK; reader_id FK; issued_at TEXT; due_at TEXT; returned_at TEXT NULL | Ссылки на copies/users; даты ISO; срок и возврат не раньше выдачи |
+| loans | id PK; copy_id FK; reader_id FK; issued_at TEXT; due_at TEXT; returned_at TEXT NULL; renewal_count INTEGER DEFAULT 0 | Ссылки на copies/users; даты ISO; срок и возврат не раньше выдачи; счётчик 0 или 1 |
 | sessions | token_hash PK TEXT; user_id FK; csrf_token TEXT; expires_at INTEGER | SHA-256 случайного токена, ссылка на users; срок Unix time |
 | audit_events | id PK; actor_id FK NULL; action TEXT; entity TEXT; entity_id INTEGER; created_at TEXT | Ссылка actor_id на users; entity_id логический, чтобы сохранять события удаления |
 
