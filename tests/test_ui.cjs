@@ -5,7 +5,9 @@ const test = require('node:test');
 
 test('only the latest loan filter response updates the table', async () => {
   const source = fs.readFileSync(process.env.SOURCE_JS || 'static/app.js', 'utf8');
-  const start = source.indexOf('async function loans() {');
+  const start = source.indexOf('function loanActions(') >= 0
+    ? source.indexOf('function loanActions(')
+    : source.indexOf('async function loans() {');
   const end = source.indexOf('\nfunction entityForm()', start);
   const pending = [];
   const rendered = [];
@@ -32,5 +34,24 @@ test('only the latest loan filter response updates the table', async () => {
   await older;
   assert.equal(rendered.length, 1);
   assert.equal(rendered[0][0][0], 'Returned book');
+});
+
+test('librarian can renew an active loan once; readers have no action buttons', () => {
+  const source = fs.readFileSync(process.env.SOURCE_JS || 'static/app.js', 'utf8');
+  const start = source.indexOf('function loanActions(');
+  assert.notEqual(start, -1, 'renewal actions must be available');
+  const end = source.indexOf('\nasync function loans()', start);
+  const context = vm.createContext({
+    user: {role: 'librarian'},
+    el: () => ({children: [], append(...nodes) { this.children.push(...nodes); }}),
+    button: (text, handler) => ({text, handler}),
+  });
+  vm.runInContext(source.slice(start, end), context);
+  assert.equal(context.loanActions({renewal_count: 0}).children.length, 2);
+  assert.equal(context.loanActions({renewal_count: 1}).children.length, 1);
+  assert.equal(context.loanActions({overdue: true, renewal_count: 0}).children.length, 1);
+  assert.equal(context.loanActions({returned_at: '2026-10-17'}), '—');
+  context.user.role = 'reader';
+  assert.equal(context.loanActions({renewal_count: 0}), '—');
 });
 
