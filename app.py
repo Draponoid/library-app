@@ -12,6 +12,12 @@ from contextlib import closing
 
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, request, send_from_directory
+try:
+    import psycopg
+    from pg_adapter import PostgresConnection
+except ImportError:
+    psycopg = None
+
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -34,9 +40,14 @@ class APIError(Exception):
 
 def db():
     if 'db' not in g:
-        g.db = sqlite3.connect(g.app_db, timeout=10)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys=ON')
+        if g.app_db.startswith(('postgresql://', 'postgres://')):
+            if psycopg is None:
+                raise RuntimeError('Для PostgreSQL установите psycopg.')
+            g.db = PostgresConnection(g.app_db)
+        else:
+            g.db = sqlite3.connect(g.app_db, timeout=10)
+            g.db.row_factory = sqlite3.Row
+            g.db.execute('PRAGMA foreign_keys=ON')
     return g.db
 
 
@@ -89,7 +100,7 @@ def create_app(config=None):
     app = Flask(__name__, static_folder='static')
     app.config.update(
         SECRET_KEY=os.getenv('SECRET_KEY'),
-        DATABASE=str(ROOT / os.getenv('DATABASE_PATH', 'data/library.sqlite3')),
+        DATABASE=os.getenv('DATABASE_URL') or str(ROOT / os.getenv('DATABASE_PATH', 'data/library.sqlite3')),
         SESSION_HOURS=int(os.getenv('SESSION_HOURS', '8')),
         COOKIE_SECURE=os.getenv('COOKIE_SECURE', 'false').lower() == 'true',
         LOAN_DAYS=int(os.getenv('LOAN_DAYS', '14')),
@@ -102,10 +113,11 @@ def create_app(config=None):
         raise RuntimeError('Задайте случайный SECRET_KEY длиной не менее 32 символов в .env.')
     if any(app.config[k] < 1 for k in ('SESSION_HOURS', 'LOAN_DAYS', 'MAX_ACTIVE_LOANS')):
         raise RuntimeError('SESSION_HOURS, LOAN_DAYS, MAX_ACTIVE_LOANS должны быть положительными.')
-    Path(app.config['DATABASE']).parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(app.config['DATABASE'])) as conn:
-        conn.executescript((ROOT / 'schema.sql').read_text(encoding='utf-8'))
-        conn.execute('PRAGMA journal_mode=WAL')
+    if not app.config['DATABASE'].startswith(('postgresql://', 'postgres://')):
+        Path(app.config['DATABASE']).parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(app.config['DATABASE'])) as conn:
+            conn.executescript((ROOT / 'schema.sql').read_text(encoding='utf-8'))
+            conn.execute('PRAGMA journal_mode=WAL')
 
     @app.before_request
     def load_user():
@@ -133,6 +145,7 @@ def create_app(config=None):
 
     @app.after_request
     def headers(response):
+        response.headers['X-Instance-ID'] = os.getenv('HOSTNAME', 'local')
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
@@ -148,6 +161,9 @@ def create_app(config=None):
     @app.errorhandler(sqlite3.IntegrityError)
     def integrity_error(_error):
         return jsonify(error={'message': 'Конфликт: запись уже существует, используется или нарушает правило данных.', 'status': 409}), 409
+
+    if psycopg:
+        app.register_error_handler(psycopg.IntegrityError, integrity_error)
 
     @app.errorhandler(HTTPException)
     def http_error(error):
@@ -424,14 +440,23 @@ def seed_demo(app):
 
 def main():
     parser = argparse.ArgumentParser(description='Библиотека 0.1.0')
-    parser.add_argument('command', choices=['run', 'init-demo', 'backup'], nargs='?', default='run')
+    parser.add_argument('command', choices=['run', 'init-demo', 'backup', 'migrate'], nargs='?', default='run')
     parser.add_argument('--output', help='Путь к новой резервной копии SQLite')
     args = parser.parse_args()
+    if args.command == 'migrate':
+        if not os.getenv('DATABASE_URL') or psycopg is None:
+            parser.error('Для migrate требуется DATABASE_URL и psycopg.')
+        with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            conn.execute((ROOT / 'schema-postgres.sql').read_text(encoding='utf-8'))
+        print('Схема PostgreSQL применена.')
+        return
     app = create_app()
     if args.command == 'init-demo':
         seed_demo(app)
         print('Демонстрационные данные созданы. Логины: librarian и reader. Пароли — из .env.')
     elif args.command == 'backup':
+        if app.config['DATABASE'].startswith(('postgresql://', 'postgres://')):
+            parser.error('Для PostgreSQL используйте pg_dump на сервере БД.')
         if not args.output:
             parser.error('Для backup нужен --output')
         target = Path(args.output).resolve()

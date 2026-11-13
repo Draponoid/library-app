@@ -1,2 +1,4 @@
 -r requirements.txt
 waitress==3.0.2
+psycopg[binary]==3.2.12
+gunicorn==23.0.0
