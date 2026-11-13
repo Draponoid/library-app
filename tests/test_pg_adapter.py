@@ -1,9 +1,13 @@
 import unittest
 from types import SimpleNamespace
 
-from pg_adapter import row_factory
+try:
+    from pg_adapter import row_factory
+except ImportError:
+    row_factory = None
 
 
+@unittest.skipIf(row_factory is None, 'psycopg is optional for SQLite')
 class PostgresAdapterTests(unittest.TestCase):
     def test_row_factory_for_statements_without_results(self):
         self.assertEqual(row_factory(SimpleNamespace(description=None))(()), {})

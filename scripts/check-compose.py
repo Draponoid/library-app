@@ -14,12 +14,13 @@ db = config('-f', 'compose.db.yml') if mode == 'db' else None
 services = app['services'] if app else db['services']
 for name, spec in services.items():
     image = spec.get('image', '')
-    assert ':' in image.rsplit('/', 1)[-1] and not image.endswith(':latest'), (name, 'image tag')
+    assert ':' in image.rsplit('/', 1)[-1] and not image.split('@', 1)[0].endswith(':latest'), (name, 'image tag')
     assert spec.get('healthcheck') and not spec['healthcheck'].get('disable'), (name, 'healthcheck')
     assert spec.get('mem_limit') and spec.get('cpus'), (name, 'resource limits')
     assert not spec.get('privileged'), (name, 'privileged')
     if name in ('app1', 'app2'):
         assert not spec.get('ports'), (name, 'application port published')
+        assert spec.get('user') in (None, '10001:10001'), (name, 'unexpected user override')
     else:
         assert spec.get('user') not in (None, '', '0', 'root', '0:0'), (name, 'root')
 if app:
