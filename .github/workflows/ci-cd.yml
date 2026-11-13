@@ -25,6 +25,8 @@ jobs:
           python -m unittest discover -s tests -v
           python -m compileall -q app.py pg_adapter.py scripts
           node --test tests/test_ui.cjs
+          bash -n scripts/install-ubuntu.sh scripts/install-db-firewall.sh scripts/deploy-two-vms.sh
+          if bash scripts/deploy-two-vms.sh invalid 127.0.0.1 user@vm; then exit 1; fi
       - name: Container integration on Linux
         shell: bash
         run: |
