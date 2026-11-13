@@ -51,6 +51,23 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/health
+          curl -fsS -H 'Content-Type: application/json' -d '{"username":"librarian","password":"integration-test-password-1"}' http://127.0.0.1:8080/api/auth/login > /dev/null
+          docker compose -f compose.db.yml exec -T db psql -U library -d library -c "INSERT INTO authors(name) VALUES ('Persistence test')"
+          docker compose -f compose.db.yml exec -T db pg_dump -U library -d library -Fc > /tmp/library.dump
+          make container-check MODE=db
+          docker compose -f compose.db.yml up -d --force-recreate
+          for i in {1..60}; do
+            if docker compose -f compose.db.yml exec -T db pg_isready -U library -d library; then break; fi
+            sleep 2
+          done
+          test "$(docker compose -f compose.db.yml exec -T db psql -U library -d library -Atc "SELECT COUNT(*) FROM authors WHERE name='Persistence test'")" = 1
+          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml up -d
+          for i in {1..60}; do
+            if DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db pg_isready -U library -d library; then break; fi
+            sleep 2
+          done
+          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db pg_restore -U library -d library --clean --if-exists < /tmp/library.dump
+          test "$(DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db psql -U library -d library -Atc "SELECT COUNT(*) FROM authors WHERE name='Persistence test'")" = 1
           docker compose stop app1
           curl -fsS http://127.0.0.1:8080/health
           test "$(docker inspect "$(docker compose ps -aq app1)" --format '{{.State.ExitCode}}')" = 0
@@ -76,5 +93,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml down -v || true
           docker compose down -v || true
           docker compose -f compose.db.yml down -v || true

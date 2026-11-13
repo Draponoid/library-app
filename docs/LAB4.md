@@ -86,11 +86,11 @@ umask 077
 mkdir -p backups
 docker compose -f compose.db.yml exec -T db pg_dump -U library -d library -Fc > backups/library.dump
 make container-check MODE=db
-DB_BIND_IP=127.0.0.1 docker compose -p library-restore -f compose.db.yml up -d
+DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml up -d
 # Дождитесь healthy в выводе следующей команды:
-DB_BIND_IP=127.0.0.1 docker compose -p library-restore -f compose.db.yml ps
-DB_BIND_IP=127.0.0.1 docker compose -p library-restore -f compose.db.yml exec -T db pg_restore -U library -d library --clean --if-exists < backups/library.dump
-DB_BIND_IP=127.0.0.1 docker compose -p library-restore -f compose.db.yml exec -T db psql -U library -d library -c 'SELECT * FROM authors;'
+DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml ps
+DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db pg_restore -U library -d library --clean --if-exists < backups/library.dump
+DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db psql -U library -d library -c 'SELECT * FROM authors;'
 ```
 
 Проверьте созданного автора. Используется отдельный проект Compose и новый volume; исходная база не затрагивается. Backup содержит данные пользователей, храните его с ограниченным доступом.
