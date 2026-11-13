@@ -11,7 +11,7 @@ class Row(dict):
 
 
 def row_factory(cursor):
-    names = [column.name for column in cursor.description]
+    names = [column.name for column in (cursor.description or ())]
     return lambda values: Row(zip(names, values))
 
 
