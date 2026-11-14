@@ -2,7 +2,11 @@ FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf107
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt requirements-docker.txt ./
-RUN pip install --no-cache-dir -r requirements-docker.txt \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r requirements-docker.txt \
+    && python -m pip uninstall --yes pip setuptools wheel \
     && useradd --uid 10001 --create-home library
 COPY app.py pg_adapter.py schema.sql schema-postgres.sql ./
 COPY static ./static
