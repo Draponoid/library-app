@@ -22,7 +22,10 @@ start() {
 }
 
 stop() {
-    docker rm -fv "$name" >/dev/null 2>&1 || true
+    if docker inspect "$name" >/dev/null 2>&1; then
+        docker exec "$name" chmod -R a+rX /ci-cache
+        docker rm -fv "$name" >/dev/null
+    fi
 }
 
 run() {
