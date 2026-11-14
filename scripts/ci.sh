@@ -8,7 +8,7 @@ db() { docker compose -f compose.db.yml "$@"; }
 app() { docker compose "$@"; }
 python() {
     docker run --rm -v /workspace:/workspace:ro -v /ci-cache/pip:/root/.cache/pip \
-        -v /ci-reports:/ci-reports -w /workspace python:3.13-slim "$@"
+        -v /ci-reports:/ci-reports -w /workspace python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 "$@"
 }
 node() { docker run --rm -v /workspace:/workspace:ro -w /workspace node:22.21.1-alpine node "$@"; }
 report() {
@@ -39,8 +39,7 @@ case "$1" in
             PYTHONPYCACHEPREFIX=/tmp/pycache python -m compileall -q app.py pg_adapter.py scripts tests
         '
         node --check static/app.js
-        docker run --rm -v /workspace:/workspace:ro -w /workspace bash:5.2-alpine \
-            bash -ec 'for script in scripts/*.sh; do bash -n "$script"; done'
+        python bash -ec 'for script in scripts/*.sh; do bash -n "$script"; done'
         ;;
     tests)
         report /ci-reports/python-tests.txt python sh -ec '
