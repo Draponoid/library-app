@@ -53,15 +53,16 @@ jobs:
         with:
           name: ci-reports
           path: |
-            ${{ env.CI_REPORT_DIR }}/*.txt
-            ${{ env.CI_REPORT_DIR }}/*.json
-            ${{ env.CI_REPORT_DIR }}/*.tap
+            ${{ env.CI_REPORT_DIR }}/
+            !${{ env.CI_REPORT_DIR }}/library-app.tar.gz
+          include-hidden-files: true
           if-no-files-found: warn
       - name: Transfer verified image to publication job
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verified-image
+          include-hidden-files: true
           path: ${{ env.CI_REPORT_DIR }}/library-app.tar.gz
           if-no-files-found: error
           retention-days: 1

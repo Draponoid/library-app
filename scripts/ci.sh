@@ -8,7 +8,7 @@ db() { docker compose -f compose.db.yml "$@"; }
 app() { docker compose "$@"; }
 python() {
     docker run --rm -v /workspace:/workspace:ro -v /ci-cache/pip:/root/.cache/pip \
-        -v /ci-reports:/ci-reports -w /workspace python:3.13.9-slim "$@"
+        -v /ci-reports:/ci-reports -w /workspace python:3.13-slim "$@"
 }
 node() { docker run --rm -v /workspace:/workspace:ro -w /workspace node:22.21.1-alpine node "$@"; }
 report() {
@@ -35,7 +35,7 @@ case "$1" in
     style)
         report /ci-reports/style.txt python sh -ec '
             pip install -q -r requirements-ci.txt
-            ruff check app.py pg_adapter.py setup_local.py scripts tests
+            ruff check --no-cache app.py pg_adapter.py setup_local.py scripts tests
             PYTHONPYCACHEPREFIX=/tmp/pycache python -m compileall -q app.py pg_adapter.py scripts tests
         '
         node --check static/app.js
