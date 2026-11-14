@@ -53,11 +53,11 @@ case "$1" in
         docker image inspect library-app:0.1.0 --format '{{.Id}}' > /ci-reports/image-id.txt
         ;;
     migrations)
-        umask 077
+        (umask 077
         mkdir -p /tmp/library-ci
         for name in db-password app-key librarian-password reader-password; do
             od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "/tmp/library-ci/$name"
-        done
+        done)
         db_env
         db up -d --wait --wait-timeout 90
         report /ci-reports/migrations.txt app run --rm --no-deps app1 python app.py migrate
@@ -98,6 +98,9 @@ case "$1" in
             -v /ci-cache/trivy:/root/.cache/trivy aquasec/trivy:0.76.2 image \
             --input /image.tar --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --exit-code 1 --format json --output /ci-reports/image-scan.json || rc=1
+        if [ -f /ci-reports/image-scan.json ]; then
+            python python -c 'import json; data=json.load(open("/ci-reports/image-scan.json")); print(*((v["VulnerabilityID"],v["PkgName"],v.get("InstalledVersion"),v.get("FixedVersion")) for r in data.get("Results",[]) for v in r.get("Vulnerabilities",[])),sep="\n")'
+        fi
         exit "$rc"
         ;;
     containers)
