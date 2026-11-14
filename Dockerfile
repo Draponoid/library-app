@@ -1,11 +1,16 @@
-FROM python:3.13.9-slim@sha256:326df678c20c78d465db501563f3492d17c42a4afe33a1f2bf5406a1d56b0e86
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt requirements-docker.txt ./
-RUN pip install --no-cache-dir -r requirements-docker.txt \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r requirements-docker.txt \
+    && python -m pip uninstall --yes pip setuptools wheel \
     && useradd --uid 10001 --create-home library
 COPY app.py pg_adapter.py schema.sql schema-postgres.sql ./
 COPY static ./static
+RUN chmod 0644 app.py pg_adapter.py schema.sql schema-postgres.sql && chmod -R a+rX static
 USER 10001:10001
 EXPOSE 5000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \

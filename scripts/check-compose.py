@@ -5,6 +5,8 @@ import sys
 
 
 def config(*args):
+    if "--stdin" in sys.argv:
+        return json.load(sys.stdin)
     return json.loads(subprocess.check_output(['docker', 'compose', *args, 'config', '--format', 'json']))
 
 

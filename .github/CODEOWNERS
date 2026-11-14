@@ -1,0 +1,10 @@
+# GitHub evaluates this file from the base branch.
+* @Draponoid @scr0mniy
+/.github/ @Draponoid @scr0mniy
+/tests/ @Draponoid @scr0mniy
+/Makefile @Draponoid @scr0mniy
+/scripts/ @Draponoid @scr0mniy
+/ruff.toml @Draponoid @scr0mniy
+/requirements*.txt @Draponoid @scr0mniy
+/Dockerfile @Draponoid @scr0mniy
+/compose*.yml @Draponoid @scr0mniy

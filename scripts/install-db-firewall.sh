@@ -12,7 +12,7 @@ script=/usr/local/sbin/library-lab4-db-firewall
 unit=/etc/systemd/system/library-lab4-db-firewall.service
 [[ ! -e $script && ! -e $unit ]] || { echo 'Firewall files already exist; refusing to overwrite' >&2; exit 1; }
 printf '%s\n' '#!/bin/sh' 'set -eu' \
-  "iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdst $DB_IP --ctorigdstport 5432 ! -s $APP_IP/32 -j DROP 2>/dev/null || iptables -I DOCKER-USER 1 -p tcp -m conntrack --ctorigdst $DB_IP --ctorigdstport 5432 ! -s $APP_IP/32 -j DROP" > "$script"
+  "iptables -C DOCKER-USER -p tcp -m conntrack --ctorigdst $DB_IP --ctorigdstport 5432 --ctdir ORIGINAL ! -s $APP_IP/32 -j DROP 2>/dev/null || iptables -I DOCKER-USER 1 -p tcp -m conntrack --ctorigdst $DB_IP --ctorigdstport 5432 --ctdir ORIGINAL ! -s $APP_IP/32 -j DROP" > "$script"
 chmod 0755 "$script"
 cat > "$unit" <<'EOF'
 [Unit]
