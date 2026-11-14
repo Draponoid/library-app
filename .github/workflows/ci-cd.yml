@@ -14,8 +14,8 @@ jobs:
     timeout-minutes: 30
     env:
       CI_DIND_NAME: library-ci
-      CI_CACHE_DIR: ${{ runner.temp }}/ci-cache
-      CI_REPORT_DIR: ${{ runner.temp }}/ci-reports
+      CI_CACHE_DIR: ${{ github.workspace }}/.ci-cache
+      CI_REPORT_DIR: ${{ github.workspace }}/.ci-reports
       CI_COMMIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
