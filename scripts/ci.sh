@@ -119,11 +119,27 @@ case "$1" in
             wget -S -O /dev/null http://127.0.0.1:8080/health 2>&1 | awk 'tolower($1)=="x-instance-id:" {print $2}'
         done)
         test "$(printf '%s\n' "$instances" | sort -u | wc -l)" -eq 2
+        survivor=$(app exec -T app2 hostname)
         app stop app1
-        if ! ready; then
+        # Docker DNS removes the stopped replica asynchronously.
+        recovered=0
+        for attempt in 1 2 3 4 5 6; do
+            if headers=$(wget -T 4 -S -O /dev/null http://127.0.0.1:8080/health 2>&1) &&
+                printf '%s\n' "$headers" | awk -v id="$survivor" '
+                    tolower($1) == "x-instance-id:" && $2 == id { found = 1 }
+                    END { exit !found }
+                '; then
+                recovered=1
+                break
+            fi
+            printf 'Failover probe %s has not reached app2\n' "$attempt"
+            sleep 1
+        done
+        if [ "$recovered" -ne 1 ]; then
             app logs --tail 40 nginx app2
             exit 1
         fi
+        printf 'Failover reached app2 (%s) on attempt %s\n' "$survivor" "$attempt" > /ci-reports/failover.txt
         test "$(docker inspect "$(app ps -aq app1)" --format '{{.State.ExitCode}}')" = 0
         app start app1
         printf '%s\n' "$instances" > /ci-reports/instances.txt
