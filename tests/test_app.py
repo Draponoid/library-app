@@ -40,7 +40,7 @@ class LibraryTests(unittest.TestCase):
             return conn.execute(sql, params).fetchall()
 
     def test_health_and_web(self):
-        self.assertEqual(self.client.get('/health').json['status'], 'ok')
+        self.assertEqual(self.client.get('/health').json['status'], 'lab5-intentional-test-failure')
         with self.client.get('/') as response:
             self.assertEqual(response.status_code, 200)
         with self.client.get('/static/app.js') as response:
