@@ -30,7 +30,7 @@ db_env() {
     export DEMO_LIBRARIAN_PASSWORD="$(cat /tmp/library-ci/librarian-password)"
     export DEMO_READER_PASSWORD="$(cat /tmp/library-ci/reader-password)"
 }
-ready() { wget -q -O - http://127.0.0.1:8080/health; }
+ready() { wget -T 8 -q -O - http://127.0.0.1:8080/health; }
 
 case "$1" in
     style)
@@ -120,7 +120,10 @@ case "$1" in
         done)
         test "$(printf '%s\n' "$instances" | sort -u | wc -l)" -eq 2
         app stop app1
-        ready
+        if ! ready; then
+            app logs --tail 40 nginx app2
+            exit 1
+        fi
         test "$(docker inspect "$(app ps -aq app1)" --format '{{.State.ExitCode}}')" = 0
         app start app1
         printf '%s\n' "$instances" > /ci-reports/instances.txt
