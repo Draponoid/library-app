@@ -3,11 +3,12 @@ set -eu
 
 export COMPOSE_PROJECT_NAME=library-ci
 export COMPOSE_PROGRESS=plain
+export HTTP_PORT=8080 DB_PORT=5432
 
-db() { docker compose -f compose.db.yml "$@"; }
-app() { docker compose "$@"; }
+db() { docker compose --env-file /dev/null -f compose.db.yml "$@"; }
+app() { docker compose --env-file /dev/null "$@"; }
 python() {
-    docker run --rm -v /workspace:/workspace:ro -v /ci-cache/pip:/root/.cache/pip \
+    docker run --rm -i -v /workspace:/workspace:ro -v /ci-cache/pip:/root/.cache/pip \
         -v /ci-reports:/ci-reports -w /workspace python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 "$@"
 }
 node() { docker run --rm -v /workspace:/workspace:ro -w /workspace node:22.21.1-alpine node "$@"; }
@@ -74,10 +75,10 @@ case "$1" in
         query="SELECT count(*) FROM authors WHERE name='CI persistence marker'"
         test "$(db exec -T db psql -U library -d library -Atc "$query")" = 1
         export DB_BIND_IP=127.0.0.1 DB_PORT=15432
-        docker compose -p library-ci-restore -f compose.db.yml up -d --wait --wait-timeout 90
-        docker compose -p library-ci-restore -f compose.db.yml exec -T db \
+        docker compose --env-file /dev/null -p library-ci-restore -f compose.db.yml up -d --wait --wait-timeout 90
+        docker compose --env-file /dev/null -p library-ci-restore -f compose.db.yml exec -T db \
             pg_restore -U library -d library --exit-on-error --single-transaction < /tmp/library-ci/library.dump
-        test "$(docker compose -p library-ci-restore -f compose.db.yml exec -T db \
+        test "$(docker compose --env-file /dev/null -p library-ci-restore -f compose.db.yml exec -T db \
             psql -U library -d library -Atc "$query")" = 1
         echo 'Marker survived recreation and was recovered in an independent volume.' > /ci-reports/backup.txt
         ;;
@@ -105,8 +106,8 @@ case "$1" in
         ;;
     containers)
         db_env
-        app config --quiet
-        db config --quiet
+        app config --format json | python python scripts/check-compose.py app --stdin
+        db config --format json | python python scripts/check-compose.py db --stdin
         test "$(docker image inspect library-app:0.1.0 --format '{{.Config.User}}')" = '10001:10001'
         app up -d --no-build --wait --wait-timeout 90
         ready
@@ -135,7 +136,8 @@ case "$1" in
         docker tag library-app:0.1.0 "$local_image"
         docker push "$local_image" > /ci-reports/registry.txt
         wget -q -O - http://127.0.0.1:5000/v2/library-app/tags/list | grep -F "$tag" >> /ci-reports/registry.txt
-        docker save "library-app:0.1.0" | gzip > /ci-reports/library-app.tar.gz
+        docker save library-app:0.1.0 -o /tmp/library-ci-image.tar
+        gzip -c /tmp/library-ci-image.tar > /ci-reports/library-app.tar.gz
         ;;
     *) echo "Unknown CI stage: $1" >&2; exit 2 ;;
 esac
