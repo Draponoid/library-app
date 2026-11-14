@@ -11,3 +11,7 @@ db-check:
 	$(MAKE) container-check MODE=db
 db-up: db-check
 	docker compose -f compose.db.yml up -d
+
+.PHONY: ci
+ci:
+	sh scripts/ci-dind.sh all

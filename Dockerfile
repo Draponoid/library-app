@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir -r requirements-docker.txt \
     && useradd --uid 10001 --create-home library
 COPY app.py pg_adapter.py schema.sql schema-postgres.sql ./
 COPY static ./static
+RUN chmod 0644 app.py pg_adapter.py schema.sql schema-postgres.sql && chmod -R a+rX static
 USER 10001:10001
 EXPOSE 5000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \

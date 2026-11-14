@@ -11,3 +11,6 @@ test-results.txt
 .idea/
 .env.*
 !.env.example
+
+.ci-cache/
+.ci-reports/

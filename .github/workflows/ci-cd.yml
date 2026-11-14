@@ -1,100 +1,104 @@
-name: CI and container checks
+name: Library CI
+
 on:
   push:
-    branches: [master, features]
   pull_request:
-    branches: [master]
-  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  verify:
+    name: Required CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI_DIND_NAME: library-ci
+      CI_CACHE_DIR: ${{ runner.temp }}/ci-cache
+      CI_REPORT_DIR: ${{ runner.temp }}/ci-reports
+      CI_COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.CI_CACHE_DIR }}
+          key: ci-${{ runner.os }}-${{ hashFiles('requirements*.txt', 'scripts/ci.sh') }}
+          restore-keys: ci-${{ runner.os }}-
+      - name: Start Docker-in-Docker
+        id: dind
+        run: sh scripts/ci-dind.sh start
+      - name: Style and syntax
+        run: sh scripts/ci-dind.sh style
+      - name: Application tests
+        run: sh scripts/ci-dind.sh tests
+      - name: Build candidate image
+        run: sh scripts/ci-dind.sh build
+      - name: Migrations on isolated PostgreSQL
+        run: sh scripts/ci-dind.sh migrations
+      - name: Backup and restore
+        run: sh scripts/ci-dind.sh backup
+      - name: Secrets dependencies and image security
+        if: ${{ !cancelled() && steps.dind.outcome == 'success' }}
+        run: sh scripts/ci-dind.sh security
+      - name: Container health balancing and failover
+        run: sh scripts/ci-dind.sh containers
+      - name: Publish verified SHA to local registry
+        run: sh scripts/ci-dind.sh registry
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-reports
+          path: |
+            ${{ env.CI_REPORT_DIR }}/*.txt
+            ${{ env.CI_REPORT_DIR }}/*.json
+            ${{ env.CI_REPORT_DIR }}/*.tap
+          if-no-files-found: warn
+      - name: Transfer verified image to publication job
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-image
+          path: ${{ env.CI_REPORT_DIR }}/library-app.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Stop Docker-in-Docker
+        if: always()
+        run: sh scripts/ci-dind.sh stop
+
+  publish:
+    name: Publish to GHCR
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          python-version: '3.13'
-      - name: Application tests
-        run: |
-          python -m pip install -r requirements-docker.txt
-          python -m unittest discover -s tests -v
-          python -m compileall -q app.py pg_adapter.py scripts
-          node --test tests/test_ui.cjs
-          for script in scripts/install-ubuntu.sh scripts/install-db-firewall.sh scripts/deploy-two-vms.sh; do bash -n "$script"; done
-          if bash scripts/deploy-two-vms.sh invalid 127.0.0.1 user@vm; then exit 1; fi
-      - name: Container integration on Linux
-        shell: bash
+          name: verified-image
+      - name: Publish verified image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          bridge=$(ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1)
-          {
-            echo 'DB_BIND_IP=0.0.0.0'
-            echo 'POSTGRES_PASSWORD=integrationtestpassword'
-            echo "DATABASE_URL=postgresql://library:integrationtestpassword@${bridge}:5432/library"
-            echo 'SECRET_KEY=integration-test-only-secret-key-at-least-32-characters'
-            echo 'DEMO_LIBRARIAN_PASSWORD=integration-test-password-1'
-            echo 'DEMO_READER_PASSWORD=integration-test-password-2'
-          } > .env
-          make db-up
+          docker run -d --privileged --name publish-dind \
+            -e DOCKER_TLS_CERTDIR= \
+            -v "$PWD/library-app.tar.gz:/image.tar.gz:ro" \
+            docker:28.5.2-dind dockerd --host=unix:///var/run/docker.sock
+          trap 'docker rm -fv publish-dind >/dev/null' EXIT
           for i in {1..60}; do
-            if docker compose -f compose.db.yml exec -T db pg_isready -U library -d library; then break; fi
-            sleep 2
+            if docker exec publish-dind docker info >/dev/null 2>&1; then break; fi
+            sleep 1
           done
-          make migrate
-          make seed
-          make up
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8080/health; then break; fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:8080/health
-          curl -fsS -H 'Content-Type: application/json' -d '{"username":"librarian","password":"integration-test-password-1"}' http://127.0.0.1:8080/api/auth/login > /dev/null
-          docker compose -f compose.db.yml exec -T db psql -U library -d library -c "INSERT INTO authors(name) VALUES ('Persistence test')"
-          docker compose -f compose.db.yml exec -T db pg_dump -U library -d library -Fc > /tmp/library.dump
-          make container-check MODE=db
-          docker compose -f compose.db.yml up -d --force-recreate
-          for i in {1..60}; do
-            if docker compose -f compose.db.yml exec -T db pg_isready -U library -d library; then break; fi
-            sleep 2
-          done
-          test "$(docker compose -f compose.db.yml exec -T db psql -U library -d library -Atc "SELECT COUNT(*) FROM authors WHERE name='Persistence test'")" = 1
-          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml up -d
-          for i in {1..60}; do
-            if DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db pg_isready -U library -d library; then break; fi
-            sleep 2
-          done
-          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db pg_restore -U library -d library --clean --if-exists < /tmp/library.dump
-          test "$(DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml exec -T db psql -U library -d library -Atc "SELECT COUNT(*) FROM authors WHERE name='Persistence test'")" = 1
-          docker compose stop app1
-          curl -fsS http://127.0.0.1:8080/health
-          test "$(docker inspect "$(docker compose ps -aq app1)" --format '{{.State.ExitCode}}')" = 0
-      - name: Log in to GHCR
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish tested image
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-        shell: bash
-        run: |
+          docker exec publish-dind docker load -i /image.tar.gz
+          printf '%s' "$GHCR_TOKEN" | docker exec -i publish-dind docker login ghcr.io \
+            -u "$GITHUB_ACTOR" --password-stdin
           image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
-          docker tag library-app:0.1.0 "$image"
-          docker push "$image"
-      - name: Logs on failure
-        if: failure()
-        run: |
-          docker compose logs || true
-          docker compose -f compose.db.yml logs || true
-      - name: Cleanup
-        if: always()
-        run: |
-          DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml down -v || true
-          docker compose down -v || true
-          docker compose -f compose.db.yml down -v || true
+          docker exec publish-dind docker tag library-app:0.1.0 "$image"
+          docker exec publish-dind docker push "$image"
