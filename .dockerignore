@@ -1,6 +1,8 @@
 **
 !app.py
+!pg_adapter.py
 !schema.sql
+!schema-postgres.sql
 !requirements.txt
 !requirements-docker.txt
 !static/
