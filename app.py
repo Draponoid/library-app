@@ -178,10 +178,14 @@ def create_app(config=None):
     def index():
         return send_from_directory(app.static_folder, 'index.html')
 
+    @app.get('/version')
+    def version():
+        return jsonify(version=os.getenv('APP_VERSION', 'local'))
+
     @app.get('/health')
     def health():
         db().execute('SELECT 1 FROM books').fetchone()
-        return jsonify(status='ok', version='0.1.0', database='ok')
+        return jsonify(status='ok', version=os.getenv('APP_VERSION', 'local'), database='ok')
 
     @app.post('/api/auth/register')
     def register():

@@ -41,6 +41,7 @@ class LibraryTests(unittest.TestCase):
 
     def test_health_and_web(self):
         self.assertEqual(self.client.get('/health').json['status'], 'ok')
+        self.assertEqual(self.client.get('/version').json['version'], os.getenv('APP_VERSION', 'local'))
         with self.client.get('/') as response:
             self.assertEqual(response.status_code, 200)
         with self.client.get('/static/app.js') as response:

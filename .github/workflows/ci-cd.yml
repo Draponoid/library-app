@@ -5,12 +5,19 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'SHA image tag to deploy or restore, e.g. sha-<40 hex>'
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      RELEASE_VERSION: sha-${{ github.sha }}
     permissions:
       contents: read
       packages: write
@@ -25,7 +32,7 @@ jobs:
           python -m unittest discover -s tests -v
           python -m compileall -q app.py pg_adapter.py scripts
           node --test tests/test_ui.cjs
-          for script in scripts/install-ubuntu.sh scripts/install-db-firewall.sh scripts/deploy-two-vms.sh; do bash -n "$script"; done
+          for script in scripts/install-ubuntu.sh scripts/install-db-firewall.sh scripts/deploy-two-vms.sh scripts/install-stage-firewall.sh scripts/check-release.sh scripts/deploy-release.sh scripts/test-release-ci.sh; do bash -n "$script"; done
           if bash scripts/deploy-two-vms.sh invalid 127.0.0.1 user@vm; then exit 1; fi
       - name: Container integration on Linux
         shell: bash
@@ -73,15 +80,18 @@ jobs:
           docker compose stop app1
           curl -fsS http://127.0.0.1:8080/health
           test "$(docker inspect "$(docker compose ps -aq app1)" --format '{{.State.ExitCode}}')" = 0
+      - name: Release and rollback integration
+        shell: bash
+        run: bash scripts/test-release-ci.sh
       - name: Log in to GHCR
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish tested image
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         shell: bash
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
@@ -96,5 +106,38 @@ jobs:
         if: always()
         run: |
           DB_BIND_IP=127.0.0.1 DB_PORT=15432 docker compose -p library-restore -f compose.db.yml down -v || true
+          RELEASE_IMAGE=127.0.0.1:5050/library-app:$RELEASE_VERSION docker compose --project-name library-stage --env-file "$RUNNER_TEMP/library-stage/.env" -f compose.release.yml down -v || true
+          docker rm -f release-test-registry || true
           docker compose down -v || true
           docker compose -f compose.db.yml down -v || true
+
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, linux, x64, library-stage]
+    environment: staging
+    timeout-minutes: 20
+    concurrency:
+      group: library-staging-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Pull, deploy and verify release
+        shell: bash
+        env:
+          STAGING_DIR: ${{ vars.STAGING_DIR }}
+          RELEASE_REPOSITORY: ghcr.io/draponoid/library-app
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == push ]]; then tag="sha-$GITHUB_SHA"; else tag="$REQUESTED_TAG"; fi
+          export DOCKER_CONFIG
+          DOCKER_CONFIG=$(mktemp -d "$RUNNER_TEMP/docker-config.XXXXXX")
+          trap 'rm -rf -- "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          bash scripts/deploy-release.sh "$tag"

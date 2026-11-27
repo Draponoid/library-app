@@ -1,5 +1,8 @@
 x-app: &app
-  build: .
+  build:
+    context: .
+    args:
+      RELEASE_VERSION: ${RELEASE_VERSION:-local}
   image: library-app:0.1.0
   environment:
     DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
