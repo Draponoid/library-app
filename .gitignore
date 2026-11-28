@@ -11,3 +11,10 @@ test-results.txt
 .idea/
 .env.*
 !.env.example
+
+# Ansible Vault and private inventory kept out of Git
+infra/secrets/*
+!infra/secrets/*.vault.yml
+infra/inventories/*/host_vars/*.local.yml
+.vault-pass
+.venv-infra/

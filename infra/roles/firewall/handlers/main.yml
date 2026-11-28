@@ -1,0 +1,6 @@
+---
+- name: Restart Docker port firewall
+  ansible.builtin.systemd_service:
+    name: "library-lab7-{{ lab_environment }}-{{ lab_firewall_suffix }}-firewall.service"
+    daemon_reload: true
+    state: restarted

@@ -1,0 +1,7 @@
+---
+# Replace both addresses with the private IPv4 address of VM1.
+ansible_host: 192.0.2.11
+lab_bind_address: 192.0.2.11
+lab_protected_port: "{{ lab_http_port }}"
+lab_allowed_cidr: "{{ lab_client_cidr }}"
+lab_firewall_suffix: app

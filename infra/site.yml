@@ -1,0 +1,29 @@
+---
+- name: Bootstrap Python on clean Ubuntu hosts
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install Python only when absent
+      ansible.builtin.raw: >-
+        if command -v python3 >/dev/null 2>&1; then echo PYTHON_PRESENT;
+        else apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 && echo PYTHON_INSTALLED; fi
+      register: lab_python_bootstrap
+      changed_when: "'PYTHON_INSTALLED' in lab_python_bootstrap.stdout"
+      check_mode: false
+
+- name: Prepare database nodes
+  hosts: database
+  become: true
+  roles:
+    - common
+    - firewall
+    - database
+
+- name: Prepare application nodes and verify availability
+  hosts: application
+  become: true
+  roles:
+    - common
+    - firewall
+    - application

@@ -1,0 +1,4 @@
+---
+lab_environment: ci
+lab_http_port: 18082
+lab_db_port: 15542

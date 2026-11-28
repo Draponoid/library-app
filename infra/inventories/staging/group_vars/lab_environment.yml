@@ -1,0 +1,4 @@
+---
+lab_environment: staging
+lab_http_port: 8083
+lab_db_port: 5543

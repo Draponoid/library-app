@@ -1,0 +1,13 @@
+[Unit]
+Description=Restrict Docker published port for library {{ lab_environment }} {{ lab_firewall_suffix }}
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/library-lab7-{{ lab_environment }}-{{ lab_firewall_suffix }}-firewall
+RemainAfterExit=yes
+
+[Install]
+WantedBy=docker.service

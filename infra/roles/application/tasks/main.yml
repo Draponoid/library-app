@@ -1,0 +1,94 @@
+---
+- name: Create application configuration directory
+  ansible.builtin.file:
+    path: "{{ lab_base_dir }}/{{ lab_environment }}/application"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Install application Compose configuration
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/application/compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install Nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/application/nginx.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Recreate Nginx after configuration change
+
+- name: Install application secret configuration
+  ansible.builtin.template:
+    src: application.env.j2
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/application/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+
+- name: Authenticate to the private container registry when configured
+  community.docker.docker_login:
+    registry_url: ghcr.io
+    username: "{{ vault_registry_username }}"
+    password: "{{ vault_registry_token }}"
+    state: present
+  when: lab_registry_auth | bool
+  no_log: true
+
+- name: Restrict registry credential file
+  ansible.builtin.file:
+    path: /root/.docker/config.json
+    owner: root
+    group: root
+    mode: '0600'
+  when: lab_registry_auth | bool
+- name: Start and check application services
+  community.docker.docker_compose_v2:
+    project_src: "{{ lab_base_dir }}/{{ lab_environment }}/application"
+    project_name: "library-lab7-{{ lab_environment }}-app"
+    state: present
+    pull: missing
+    wait: true
+    wait_timeout: 120
+  no_log: true
+
+- name: Create demonstration data only in an empty database
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "library-lab7-{{ lab_environment }}-app"
+      - run
+      - --rm
+      - --no-deps
+      - app1
+      - python
+      - app.py
+      - init-demo
+    chdir: "{{ lab_base_dir }}/{{ lab_environment }}/application"
+  when: hostvars[groups['database'][0]].lab_user_count.stdout | int == 0
+  changed_when: true
+  no_log: true
+
+- name: Apply Nginx changes before checking service
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify application health through Nginx
+  ansible.builtin.uri:
+    url: "http://{{ lab_bind_address }}:{{ lab_http_port }}/health"
+    status_code: 200
+    return_content: true
+  register: lab_health
+  until: lab_health.status == 200 and lab_health.json.status == 'ok' and lab_health.json.database == 'ok'
+  retries: 20
+  delay: 3
+  changed_when: false
