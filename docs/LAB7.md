@@ -14,7 +14,7 @@ Ansible управляет двумя Ubuntu VM: VM1 запускает прил
 ```sh
 sudo apt-get update
 sudo apt-get install -y git python3-venv openssl
- git clone -b lab7-configuration https://github.com/Draponoid/library-app.git ~/library-lab7
+git clone -b lab7-configuration https://github.com/Draponoid/library-app.git ~/library-lab7
 cd ~/library-lab7
 python3 -m venv .venv-infra
 . .venv-infra/bin/activate
