@@ -85,7 +85,7 @@ vault_demo_reader_password: ЗДЕСЬ_ДРУГОЙ_СЛУЧАЙНЫЙ_HEX_ИЗ_
 
 ```sh
 ansible-playbook -i ~/lab7-config/staging/hosts.yml infra/site.yml \
-  -e @~/lab7-config/operator.json \
+  -e "@$HOME/lab7-config/operator.json" \
   -e @infra/secrets/staging.vault.yml \
   -e lab_app_image=ghcr.io/draponoid/library-app:sha-ПОЛНЫЙ_SHA \
   --ask-vault-pass
