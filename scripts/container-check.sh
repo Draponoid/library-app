@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 # Validate the exact Compose configuration and the built image before changing it.
+if [ "${MODE:-app}" = release ]; then
+  exec bash scripts/check-release.sh
+fi
 if [ "${MODE:-app}" = db ]; then
   docker compose -f compose.db.yml config --quiet
   python3 scripts/check-compose.py db
