@@ -23,7 +23,6 @@ for service in app1 app2 nginx; do
   for _ in {1..60}; do
     status=$(docker inspect --format '{{.State.Health.Status}}' "$container")
     if [[ $status == healthy ]]; then ready=true; break; fi
-    [[ $status != unhealthy ]] || break
     sleep 2
   done
   [[ $ready == true ]] || { echo "$service did not become healthy" >&2; exit 1; }
