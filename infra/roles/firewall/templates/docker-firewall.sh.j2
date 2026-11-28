@@ -1,0 +1,9 @@
+#!/bin/sh
+# Docker published ports bypass UFW. This dedicated chain filters the original host endpoint.
+set -eu
+chain=LAB7_{{ 'P' if lab_environment == 'prod' else 'S' }}_{{ 'APP' if lab_firewall_suffix == 'app' else 'DB' }}
+iptables -N "$chain" 2>/dev/null || iptables -nL "$chain" >/dev/null
+iptables -C DOCKER-USER -j "$chain" 2>/dev/null || iptables -I DOCKER-USER 1 -j "$chain"
+iptables -F "$chain"
+iptables -A "$chain" -p tcp -m conntrack --ctorigdst {{ lab_bind_address }} --ctorigdstport {{ lab_protected_port }} ! -s {{ lab_allowed_cidr }} -j DROP
+iptables -A "$chain" -j RETURN

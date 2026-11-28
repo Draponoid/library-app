@@ -1,0 +1,69 @@
+---
+- name: Create database configuration directory
+  ansible.builtin.file:
+    path: "{{ lab_base_dir }}/{{ lab_environment }}/database"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Install database Compose configuration
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/database/compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install initial PostgreSQL schema
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../schema-postgres.sql"
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/database/001-schema.sql"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install database secret configuration
+  ansible.builtin.template:
+    src: database.env.j2
+    dest: "{{ lab_base_dir }}/{{ lab_environment }}/database/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+
+- name: Start and check PostgreSQL
+  community.docker.docker_compose_v2:
+    project_src: "{{ lab_base_dir }}/{{ lab_environment }}/database"
+    project_name: "library-lab7-{{ lab_environment }}-db"
+    state: present
+    pull: missing
+    wait: true
+    wait_timeout: 120
+  no_log: true
+
+- name: Count database users
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "library-lab7-{{ lab_environment }}-db"
+      - exec
+      - -T
+      - db
+      - psql
+      - -U
+      - library
+      - -d
+      - library
+      - -Atc
+      - SELECT COUNT(*) FROM users
+    chdir: "{{ lab_base_dir }}/{{ lab_environment }}/database"
+  register: lab_user_count
+  changed_when: false
+  until: lab_user_count.rc == 0
+  retries: 15
+  delay: 2
+  check_mode: false

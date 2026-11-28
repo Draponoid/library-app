@@ -1,0 +1,4 @@
+---
+lab_environment: prod
+lab_http_port: 8082
+lab_db_port: 5542

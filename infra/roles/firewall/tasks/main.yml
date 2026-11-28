@@ -1,0 +1,58 @@
+---
+- name: Allow administrative SSH before enabling firewall
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    src: "{{ lab_admin_cidr }}"
+    port: '22'
+  when: lab_manage_firewall | bool
+
+- name: Allow published service port from approved network
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    src: "{{ lab_allowed_cidr }}"
+    port: "{{ lab_protected_port | string }}"
+  when: lab_manage_firewall | bool
+
+- name: Deny other incoming connections
+  community.general.ufw:
+    default: deny
+    direction: incoming
+  when: lab_manage_firewall | bool
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  when: lab_manage_firewall | bool
+
+- name: Install Docker published-port firewall script
+  ansible.builtin.template:
+    src: docker-firewall.sh.j2
+    dest: "/usr/local/sbin/library-lab7-{{ lab_environment }}-{{ lab_firewall_suffix }}-firewall"
+    owner: root
+    group: root
+    mode: '0755'
+  notify: Restart Docker port firewall
+  when: lab_manage_firewall | bool
+
+- name: Install persistent Docker port firewall unit
+  ansible.builtin.template:
+    src: docker-firewall.service.j2
+    dest: "/etc/systemd/system/library-lab7-{{ lab_environment }}-{{ lab_firewall_suffix }}-firewall.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Docker port firewall
+  when: lab_manage_firewall | bool
+
+- name: Enable and start Docker port firewall
+  ansible.builtin.systemd_service:
+    name: "library-lab7-{{ lab_environment }}-{{ lab_firewall_suffix }}-firewall.service"
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: lab_manage_firewall | bool
+
+- name: Apply firewall changes before publishing service ports
+  ansible.builtin.meta: flush_handlers

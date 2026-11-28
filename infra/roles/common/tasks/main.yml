@@ -1,0 +1,115 @@
+---
+- name: Validate host and non-secret configuration
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - lab_environment in ['prod', 'staging', 'ci']
+      - lab_bind_address is match('^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+      - lab_allow_example_addresses | bool or not lab_bind_address.startswith('192.0.2.')
+      - lab_deploy_public_key | length > 20
+      - lab_allowed_cidr is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$')
+      - lab_admin_cidr is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$')
+      - lab_client_cidr is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$')
+      - lab_bind_address | ansible.utils.ipaddr('address')
+      - lab_allowed_cidr | ansible.utils.ipaddr('net')
+      - lab_admin_cidr | ansible.utils.ipaddr('net')
+      - lab_client_cidr | ansible.utils.ipaddr('net')
+      - lab_firewall_suffix in ['app', 'db']
+      - lab_protected_port | int > 0
+      - lab_protected_port | int < 65536
+      - lab_app_image | length > 0
+      - "':' in lab_app_image.rsplit('/', 1)[-1]"
+      - not lab_app_image.endswith(':latest')
+      - lab_admin_cidr != '192.0.2.0/24' or lab_allow_example_addresses | bool
+      - lab_client_cidr != '192.0.2.0/24' or lab_allow_example_addresses | bool
+    fail_msg: Fill the inventory, CIDRs, public key and explicitly tagged image before running.
+
+- name: Validate encrypted configuration values
+  ansible.builtin.assert:
+    that:
+      - vault_db_password is defined
+      - vault_secret_key is defined
+      - vault_demo_librarian_password is defined
+      - vault_demo_reader_password is defined
+      - vault_db_password is match('^[a-f0-9]{24,}$')
+      - vault_secret_key is match('^[a-f0-9]{64,}$')
+      - vault_demo_librarian_password is match('^[a-f0-9]{20,}$')
+      - vault_demo_reader_password is match('^[a-f0-9]{20,}$')
+  no_log: true
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, python3, python3-requests, openssh-server, ufw, iptables]
+    update_cache: true
+    cache_valid_time: 3600
+    state: present
+  when: lab_manage_packages | bool
+
+- name: Create Docker apt key directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: lab_manage_packages | bool
+
+- name: Install Docker repository key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+  when: lab_manage_packages | bool
+
+- name: Configure Docker repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch={{ 'amd64' if ansible_facts.architecture == 'x86_64' else 'arm64' }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts.distribution_release }} stable"
+    filename: docker
+    state: present
+  when: lab_manage_packages | bool
+
+- name: Install Docker and Compose
+  ansible.builtin.apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: lab_manage_packages | bool
+
+- name: Start and enable Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+  when: lab_manage_packages | bool
+
+- name: Create limited operator account
+  ansible.builtin.user:
+    name: "{{ lab_deploy_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Install operator SSH public key
+  ansible.posix.authorized_key:
+    user: "{{ lab_deploy_user }}"
+    key: "{{ lab_deploy_public_key }}"
+    state: present
+
+- name: Configure key-based SSH and restrict root login
+  ansible.builtin.template:
+    src: sshd-lab7.conf.j2
+    dest: /etc/ssh/sshd_config.d/40-library-lab7.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload SSH
+  when: lab_manage_ssh | bool
+
+- name: Create base directory
+  ansible.builtin.file:
+    path: "{{ lab_base_dir }}/{{ lab_environment }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'

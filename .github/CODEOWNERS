@@ -1,0 +1,6 @@
+# A repository administrator must enable required code-owner review on master.
+/.github/CODEOWNERS @Draponoid
+/.github/workflows/ @Draponoid
+/.gitignore @Draponoid
+/infra/ @Draponoid
+/schema-postgres.sql @Draponoid
